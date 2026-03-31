@@ -45,7 +45,11 @@ import {
   Cpu,
   SearchCheck,
   FileSearch,
-  Fingerprint
+  Fingerprint,
+  LogOut,
+  User,
+  QrCode,
+  Download
 } from "lucide-react";
 
 import { 
@@ -57,7 +61,13 @@ import {
   Legend 
 } from "recharts";
 
-type Page = "home" | "form" | "register" | "waiting" | "partners" | "dashboard" | "login" | "proposals" | "comparison" | "portfolio" | "proposal-detail" | "favorites" | "platform-values" | "security-services" | "authorizations" | "proposal-confirmation" | "workflow";
+interface LocalUser {
+  uid: string;
+  email: string;
+  displayName?: string;
+}
+
+type Page = "home" | "form" | "register" | "waiting" | "partners" | "dashboard" | "login" | "proposals" | "comparison" | "portfolio" | "proposal-detail" | "favorites" | "platform-values" | "security-services" | "authorizations" | "proposal-confirmation" | "workflow" | "requirements_list" | "credential";
 
 interface UserAccount {
   email: string;
@@ -267,6 +277,15 @@ interface InvestmentFormData {
   excludedIndustries: string[];
   specialGoals: string;
   agreedToTerms: boolean;
+}
+
+interface Requirement {
+  id: string;
+  title: string;
+  status: string;
+  date: string;
+  proposals: number;
+  tags: string[];
 }
 
 const initialFormData: InvestmentFormData = {
@@ -498,23 +517,49 @@ export default function App() {
   const [regData, setRegData] = useState<RegistrationData>(initialRegistrationData);
   const [regStep, setRegStep] = useState(1);
   const [hasCertificate, setHasCertificate] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
   const [issuingStep, setIssuingStep] = useState(0);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [currentUser, setCurrentUser] = useState<LocalUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
-  const [hasSubmittedRequirement, setHasSubmittedRequirement] = useState(false);
-  const [acceptedProposal, setAcceptedProposal] = useState<Proposal | null>(null);
+  const [submittedRequirements, setSubmittedRequirements] = useState<Requirement[]>([]);
+  const [acceptedProposals, setAcceptedProposals] = useState<Proposal[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Check for saved user on mount
+  // Auth state simulation
   useEffect(() => {
-    const savedUser = localStorage.getItem("investmatch_user");
+    const savedUser = localStorage.getItem("local_user");
     if (savedUser) {
       const user = JSON.parse(savedUser);
       setCurrentUser(user);
       setHasCertificate(true);
+      
+      // Load other data from localStorage
+      const savedRegData = localStorage.getItem(`regData_${user.uid}`);
+      if (savedRegData) setRegData(JSON.parse(savedRegData));
+      
+      const savedReqs = localStorage.getItem(`reqs_${user.uid}`);
+      if (savedReqs) setSubmittedRequirements(JSON.parse(savedReqs));
+      
+      const savedAccepted = localStorage.getItem(`accepted_${user.uid}`);
+      if (savedAccepted) setAcceptedProposals(JSON.parse(savedAccepted));
+      
+      const savedFavorites = localStorage.getItem(`favorites_${user.uid}`);
+      if (savedFavorites) setFavoriteIds(JSON.parse(savedFavorites));
     }
+    setIsAuthReady(true);
   }, []);
+
+  // Protected routes check
+  useEffect(() => {
+    if (isAuthReady && !currentUser) {
+      if (["dashboard", "proposals", "comparison", "portfolio", "favorites", "authorizations", "requirements_list", "form"].includes(currentPage)) {
+        setCurrentPage("home");
+      }
+    }
+  }, [currentPage, currentUser, isAuthReady]);
 
   const issuingSteps = [
     "資料已提交",
@@ -528,7 +573,7 @@ export default function App() {
     if (currentPage === "waiting" && issuingStep < issuingSteps.length) {
       const timer = setTimeout(() => {
         setIssuingStep(prev => prev + 1);
-      }, 1500);
+      }, 1000); // Reduced from 1500ms to 1000ms
       return () => clearTimeout(timer);
     }
   }, [currentPage, issuingStep]);
@@ -555,32 +600,53 @@ export default function App() {
     setRegStep(1);
   };
 
-  const completeRegistration = () => {
-    setCurrentPage("waiting");
-    setIssuingStep(0);
+  const completeRegistration = async () => {
+    setIsRegistering(true);
+    try {
+      // Simulate local registration
+      const mockUid = "user_" + Math.random().toString(36).substr(2, 9);
+      const newUser: LocalUser = {
+        uid: mockUid,
+        email: regData.basic.email,
+        displayName: regData.basic.name
+      };
+      
+      localStorage.setItem("local_user", JSON.stringify(newUser));
+      localStorage.setItem(`regData_${mockUid}`, JSON.stringify(regData));
+      
+      setCurrentUser(newUser);
+      setCurrentPage("waiting");
+      setIssuingStep(0);
+    } catch (error: any) {
+      console.error("Registration Error:", error);
+      alert("註冊失敗: " + error.message);
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   const finishIssuance = () => {
-    const newUser: UserAccount = {
-      email: regData.basic.email,
-      name: regData.basic.name,
-      password: regData.basic.password,
+    setHasCertificate(true);
+    setCurrentPage("credential");
+  };
+
+  const handleLogin = async (email: string, password: string) => {
+    // Simulate local login
+    const mockUid = "user_demo";
+    const newUser: LocalUser = {
+      uid: mockUid,
+      email: email,
+      displayName: "Demo User"
     };
-    localStorage.setItem("investmatch_user", JSON.stringify(newUser));
+    
+    localStorage.setItem("local_user", JSON.stringify(newUser));
     setCurrentUser(newUser);
     setHasCertificate(true);
     setCurrentPage("dashboard");
   };
 
-  const handleLogin = (user: UserAccount) => {
-    localStorage.setItem("investmatch_user", JSON.stringify(user));
-    setCurrentUser(user);
-    setHasCertificate(true);
-    setCurrentPage("dashboard");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("investmatch_user");
+  const handleLogout = async () => {
+    localStorage.removeItem("local_user");
     setCurrentUser(null);
     setHasCertificate(false);
     setCurrentPage("home");
@@ -600,14 +666,38 @@ export default function App() {
   };
 
   const toggleFavorite = (id: string) => {
-    setFavoriteIds(prev => 
-      prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
-    );
+    if (!currentUser) return;
+    setFavoriteIds(prev => {
+      const newFavorites = prev.includes(id) 
+        ? prev.filter(fid => fid !== id) 
+        : [...prev, id];
+      localStorage.setItem(`favorites_${currentUser.uid}`, JSON.stringify(newFavorites));
+      return newFavorites;
+    });
   };
 
   const viewDetail = (id: string) => {
     setSelectedProposalId(id);
     setCurrentPage("proposal-detail");
+  };
+
+  const getProposalById = (id: string) => {
+    const parts = id.split('-');
+    // ID format: PROP-XXX-reqIndex-proposalIndex
+    if (parts.length < 4) return mockProposals.find(p => p.id === id) || null;
+    
+    const baseId = `${parts[0]}-${parts[1]}`;
+    const reqIndex = parseInt(parts[2]);
+    const baseProposal = mockProposals.find(p => p.id === baseId);
+    
+    if (baseProposal && submittedRequirements[reqIndex]) {
+      return {
+        ...baseProposal,
+        id: id,
+        proposalName: `${baseProposal.proposalName} (針對需求 ${submittedRequirements[reqIndex].id.slice(-4)})`
+      };
+    }
+    return baseProposal || null;
   };
 
   const handleAcceptProposal = (proposal: Proposal) => {
@@ -706,6 +796,7 @@ export default function App() {
               regStep={regStep}
               setRegStep={setRegStep}
               onComplete={completeRegistration}
+              isRegistering={isRegistering}
             />
           </motion.div>
         ) : currentPage === "waiting" ? (
@@ -720,6 +811,13 @@ export default function App() {
           <motion.div key="partners" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <PartnersPage onBack={handleBack} />
           </motion.div>
+        ) : currentPage === "credential" ? (
+          <motion.div key="credential" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <CredentialViewPage 
+              onDashboard={() => setCurrentPage("dashboard")}
+              regData={regData}
+            />
+          </motion.div>
         ) : currentPage === "dashboard" ? (
           <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <DashboardPage 
@@ -728,26 +826,37 @@ export default function App() {
               onViewProposals={() => setCurrentPage("proposals")}
               onViewComparison={() => setCurrentPage("comparison")}
               onViewFavorites={() => setCurrentPage("favorites")}
+              onViewRequirements={() => setCurrentPage("requirements_list")}
               onViewDetail={viewDetail}
               onViewAuthorizations={() => setCurrentPage("authorizations")}
               onViewPortfolio={() => setCurrentPage("portfolio")}
-              hasSubmittedRequirement={hasSubmittedRequirement}
-              acceptedProposal={acceptedProposal}
+              onViewCredential={() => setCurrentPage("credential")}
+              submittedRequirements={submittedRequirements}
+              acceptedProposals={acceptedProposals}
               favoriteIds={favoriteIds}
+            />
+          </motion.div>
+        ) : currentPage === "requirements_list" ? (
+          <motion.div key="requirements_list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <RequirementsListPage 
+              onBack={() => setCurrentPage("dashboard")}
+              requirements={submittedRequirements}
+              onViewProposals={() => setCurrentPage("proposals")}
+              onNewRequirement={() => setCurrentPage("form")}
             />
           </motion.div>
         ) : currentPage === "portfolio" ? (
           <motion.div key="portfolio" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <PortfolioPage 
               onBack={() => setCurrentPage("dashboard")} 
-              acceptedProposal={acceptedProposal}
+              acceptedProposals={acceptedProposals}
             />
           </motion.div>
         ) : currentPage === "authorizations" ? (
           <motion.div key="authorizations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <AuthorizationsPage 
               onBack={() => setCurrentPage("dashboard")} 
-              acceptedProposal={acceptedProposal}
+              acceptedProposals={acceptedProposals}
             />
           </motion.div>
         ) : currentPage === "proposals" ? (
@@ -758,6 +867,7 @@ export default function App() {
               onAccept={handleAcceptProposal}
               favoriteIds={favoriteIds}
               onToggleFavorite={toggleFavorite}
+              submittedRequirements={submittedRequirements}
             />
           </motion.div>
         ) : currentPage === "favorites" ? (
@@ -768,17 +878,18 @@ export default function App() {
               onAccept={handleAcceptProposal}
               favoriteIds={favoriteIds}
               onToggleFavorite={toggleFavorite}
+              submittedRequirements={submittedRequirements}
               isFavoritesOnly={true}
             />
           </motion.div>
         ) : currentPage === "proposal-detail" && selectedProposalId ? (
           <motion.div key="proposal-detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <ProposalDetailPage 
-              proposal={mockProposals.find(p => p.id === selectedProposalId)!}
+              proposal={getProposalById(selectedProposalId)!}
               onBack={() => setCurrentPage("proposals")}
               isFavorite={favoriteIds.includes(selectedProposalId)}
               onToggleFavorite={() => toggleFavorite(selectedProposalId)}
-              onAccept={() => handleAcceptProposal(mockProposals.find(p => p.id === selectedProposalId)!)}
+              onAccept={() => handleAcceptProposal(getProposalById(selectedProposalId)!)}
             />
           </motion.div>
         ) : currentPage === "proposal-confirmation" && selectedProposal ? (
@@ -787,7 +898,11 @@ export default function App() {
               proposal={selectedProposal}
               onBack={() => setCurrentPage("proposal-detail")}
               onConfirm={() => {
-                setAcceptedProposal(selectedProposal);
+                if (!currentUser) return;
+                const proposalId = selectedProposal.id;
+                const newAccepted = [...acceptedProposals, selectedProposal];
+                setAcceptedProposals(newAccepted);
+                localStorage.setItem(`accepted_${currentUser.uid}`, JSON.stringify(newAccepted));
                 setCurrentPage("authorizations");
               }}
             />
@@ -806,7 +921,20 @@ export default function App() {
               updateField={updateField}
               toggleProduct={toggleProduct}
               onSubmit={() => {
-                setHasSubmittedRequirement(true);
+                if (!currentUser) return;
+                const proposalCount = Math.floor(Math.random() * 3) + 3; // Randomly 3, 4, or 5 proposals
+                const newReqId = `REQ-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 1000)}`;
+                const newReq: Requirement = {
+                  id: newReqId,
+                  title: `${formData.amountRange} 投資配置需求`,
+                  status: "媒合中",
+                  date: new Date().toISOString().slice(0, 10),
+                  proposals: proposalCount,
+                  tags: [formData.riskLevel.split(' ')[0], "定期定額"]
+                };
+                const newReqs = [...submittedRequirements, newReq];
+                setSubmittedRequirements(newReqs);
+                localStorage.setItem(`reqs_${currentUser.uid}`, JSON.stringify(newReqs));
                 setCurrentPage("dashboard");
               }}
             />
@@ -900,9 +1028,9 @@ function PlatformValuesPage({ onBack }: { onBack: () => void }) {
             <div className="w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center mb-8 shadow-lg shadow-emerald-200">
               <Search className="text-white w-8 h-8" />
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-6">3. 一次比較多家券商方案，降低資訊分散與比較成本</h3>
+            <h3 className="text-2xl font-bold text-slate-900 mb-6">3. 強化資訊透明度與流程可追蹤性</h3>
             <p className="text-slate-600 leading-relaxed text-lg">
-              透過統一的展示架構與流程設計，讓使用者能清楚掌握每一份方案的來源、更新時間、揭露內容與後續流程，提升資訊透明度與使用信任感。
+              投資人在接觸不同機構方案時，常常面臨資訊格式不一致、版本更新不明確、責任歸屬模糊等問題。平台透過統一的展示架構與流程設計，讓使用者能清楚掌握每一份方案的來源、更新時間、揭露內容與後續流程，提升資訊透明度與使用信任感。
             </p>
           </motion.div>
 
@@ -1356,7 +1484,7 @@ function HomePage({ onStart, onRegister, hasCertificate, onDashboard, onLogin, o
   );
 }
 
-function LoginPage({ onBack, onLogin, onRegister }: { onBack: () => void, onLogin: (user: UserAccount) => void, onRegister: () => void }) {
+function LoginPage({ onBack, onLogin, onRegister }: { onBack: () => void, onLogin: (email: string, password: string) => void, onRegister: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -1364,18 +1492,7 @@ function LoginPage({ onBack, onLogin, onRegister }: { onBack: () => void, onLogi
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError("");
-
-    const savedUser = localStorage.getItem("investmatch_user");
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      if (user.email === email && user.password === password) {
-        onLogin(user);
-      } else {
-        setError("電子郵件或密碼錯誤");
-      }
-    } else {
-      setError("找不到此用戶，請先註冊");
-    }
+    onLogin(email, password);
   };
 
   return (
@@ -1609,7 +1726,7 @@ function PartnersPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-function ProposalListPage({ onBack, onViewDetail, onAccept, favoriteIds, onToggleFavorite, isFavoritesOnly = false }: { onBack: () => void, onViewDetail: (id: string) => void, onAccept: (proposal: Proposal) => void, favoriteIds: string[], onToggleFavorite: (id: string) => void, isFavoritesOnly?: boolean }) {
+function ProposalListPage({ onBack, onViewDetail, onAccept, favoriteIds, onToggleFavorite, submittedRequirements, isFavoritesOnly = false }: { onBack: () => void, onViewDetail: (id: string) => void, onAccept: (proposal: Proposal) => void, favoriteIds: string[], onToggleFavorite: (id: string) => void, submittedRequirements: Requirement[], isFavoritesOnly?: boolean }) {
   const [filterAssetType, setFilterAssetType] = useState("all");
   const [filterRisk, setFilterRisk] = useState("all");
   const [filterIncomeMode, setFilterIncomeMode] = useState("all");
@@ -1620,7 +1737,23 @@ function ProposalListPage({ onBack, onViewDetail, onAccept, favoriteIds, onToggl
   const incomeModes = ["固定收益型", "成長增值型", "現金流分配型", "混合型"];
 
   const filteredProposals = useMemo(() => {
-    let result = mockProposals.filter(p => {
+    let baseProposals: Proposal[] = [];
+    
+    submittedRequirements.forEach((req, reqIndex) => {
+      // For each requirement, take exactly 'req.proposals' number of proposals
+      // We cycle through mockProposals if we need more than available
+      for (let i = 0; i < req.proposals; i++) {
+        const mockIndex = i % mockProposals.length;
+        const p = mockProposals[mockIndex];
+        baseProposals.push({
+          ...p,
+          id: `${p.id}-${reqIndex}-${i}`,
+          proposalName: `${p.proposalName} (針對需求 ${req.id.slice(-4)})`
+        });
+      }
+    });
+
+    let result = baseProposals.filter(p => {
       const assetTypeMatch = filterAssetType === "all" || p.productType === filterAssetType;
       const riskMatch = filterRisk === "all" || p.riskLevel === filterRisk;
       const incomeModeMatch = filterIncomeMode === "all" || p.incomeMode === filterIncomeMode;
@@ -2472,11 +2605,43 @@ function ComparisonPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewComparison, onViewFavorites, onViewDetail, onViewAuthorizations, onViewPortfolio, hasSubmittedRequirement, acceptedProposal, favoriteIds }: { onNewRequirement: () => void, regData: RegistrationData, onViewProposals: () => void, onViewComparison: () => void, onViewFavorites: () => void, onViewDetail: (id: string) => void, onViewAuthorizations: () => void, onViewPortfolio: () => void, hasSubmittedRequirement: boolean, acceptedProposal: Proposal | null, favoriteIds: string[] }) {
-  const hasAcceptedProposal = !!acceptedProposal;
+function DashboardPage({ 
+  onNewRequirement, 
+  regData, 
+  onViewProposals, 
+  onViewComparison, 
+  onViewFavorites, 
+  onViewRequirements,
+  onViewDetail, 
+  onViewAuthorizations, 
+  onViewPortfolio, 
+  onViewCredential,
+  submittedRequirements, 
+  acceptedProposals, 
+  favoriteIds 
+}: { 
+  onNewRequirement: () => void, 
+  regData: RegistrationData, 
+  onViewProposals: () => void, 
+  onViewComparison: () => void, 
+  onViewFavorites: () => void, 
+  onViewRequirements: () => void,
+  onViewDetail: (id: string) => void, 
+  onViewAuthorizations: () => void, 
+  onViewPortfolio: () => void, 
+  onViewCredential: () => void,
+  submittedRequirements: Requirement[], 
+  acceptedProposals: Proposal[], 
+  favoriteIds: string[] 
+}) {
+  const hasAcceptedProposal = acceptedProposals.length > 0;
+  const latestProposal = acceptedProposals[acceptedProposals.length - 1];
+  const hasSubmittedRequirement = submittedRequirements.length > 0;
+  const totalProposals = submittedRequirements.reduce((acc, req) => acc + req.proposals, 0);
+
   const stats = [
-    { label: "需求提交", value: hasSubmittedRequirement ? "1" : "0", icon: FileText, color: "blue" },
-    { label: "收到方案", value: hasSubmittedRequirement ? "3" : "0", icon: BarChart3, color: "indigo" },
+    { label: "需求提交", value: submittedRequirements.length.toString(), icon: FileText, color: "blue" },
+    { label: "收到方案", value: totalProposals.toString(), icon: BarChart3, color: "indigo" },
     { label: "收藏方案", value: favoriteIds.length.toString(), icon: Star, color: "amber" },
     { label: "比較紀錄", value: hasSubmittedRequirement ? "1" : "0", icon: GitCompare, color: "emerald" },
   ];
@@ -2489,16 +2654,7 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
     { id: 3, title: "授權即將到期", content: "您的信用憑證授權將在 7 天後到期，請記得更新。", time: "2天前", type: "alert" },
   ];
 
-  const requirements = hasSubmittedRequirement ? [
-    { 
-      id: "REQ-20240327", 
-      title: "2024 年度資產配置需求", 
-      status: "媒合中", 
-      date: "2024-03-27",
-      proposals: 3,
-      tags: ["穩健型", "定期定額"]
-    }
-  ] : [];
+  const requirements = submittedRequirements.length > 0 ? submittedRequirements : [];
 
   return (
     <div className="flex-1 bg-slate-50 pb-20">
@@ -2511,6 +2667,12 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
               <p className="text-slate-500">管理您的投資需求、查看券商提案並追蹤所有活動紀錄。</p>
             </div>
             <div className="flex items-center gap-3">
+              <button 
+                onClick={onViewCredential}
+                className="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-200 transition-all flex items-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4 text-blue-600" /> 我的憑證
+              </button>
               <button 
                 onClick={onNewRequirement}
                 className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200"
@@ -2531,6 +2693,7 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
               className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all ${((stat.label === "收到方案" || stat.label === "比較紀錄" || stat.label === "收藏方案") && hasSubmittedRequirement) ? "cursor-pointer hover:border-blue-300 hover:shadow-md" : (stat.label !== "需求提交" ? "opacity-50 grayscale cursor-not-allowed" : "")}`}
               onClick={
                 (hasSubmittedRequirement || stat.label === "需求提交") ? (
+                  stat.label === "需求提交" ? onViewRequirements :
                   stat.label === "收到方案" ? onViewProposals : 
                   stat.label === "比較紀錄" ? onViewComparison : 
                   stat.label === "收藏方案" ? onViewFavorites :
@@ -2551,7 +2714,7 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
         <section className="mb-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
-              <Activity className="w-6 h-6 text-blue-600" /> 我的方案
+              <Activity className="w-6 h-6 text-blue-600" /> 我的方案 {hasAcceptedProposal && <span className="text-sm font-normal text-slate-400 ml-2">({acceptedProposals.length} 個執行中)</span>}
             </h2>
           </div>
           
@@ -2566,11 +2729,11 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                    {hasAcceptedProposal ? acceptedProposal?.proposalName : "管理我的投資方案"}
+                    {hasAcceptedProposal ? (acceptedProposals.length > 1 ? `管理您的 ${acceptedProposals.length} 個方案` : latestProposal?.proposalName) : "管理我的投資方案"}
                   </h3>
                   <p className="text-slate-500 max-w-md leading-relaxed">
                     {hasAcceptedProposal ? (
-                      <>您目前正在執行 <span className="text-blue-600 font-bold">{acceptedProposal?.brokerName}</span> 的方案。點擊進入管理介面查看即時報酬、資產配置與交易紀錄。</>
+                      <>您目前正在執行 <span className="text-blue-600 font-bold">{acceptedProposals.length > 1 ? "多個券商" : latestProposal?.brokerName}</span> 的方案。點擊進入管理介面查看即時報酬、資產配置與交易紀錄。</>
                     ) : (
                       <>您尚未接受任何投資方案。在「收到方案」中選定適合您的方案並完成簽署後，即可在此追蹤執行情況。</>
                     )}
@@ -2602,7 +2765,12 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-600" /> 我的投資需求
                 </h2>
-                <button className="text-sm text-blue-600 font-bold hover:underline">查看全部</button>
+                <button 
+                  onClick={onViewRequirements}
+                  className="text-sm text-blue-600 font-bold hover:underline"
+                >
+                  查看全部
+                </button>
               </div>
               <div className="space-y-4">
                 {requirements.length > 0 ? requirements.map((req) => (
@@ -2672,7 +2840,7 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-900">授權狀態</h4>
-                      <p className="text-xs text-slate-500">{hasAcceptedProposal ? "2 個有效授權" : "0 個有效授權"}</p>
+                      <p className="text-xs text-slate-500">{hasAcceptedProposal ? `${acceptedProposals.length * 2} 個有效授權` : "0 個有效授權"}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2681,7 +2849,7 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-900">同意紀錄</h4>
-                      <p className="text-xs text-slate-500">{hasAcceptedProposal ? "4 筆存證紀錄" : "0 筆存證紀錄"}</p>
+                      <p className="text-xs text-slate-500">{hasAcceptedProposal ? `${acceptedProposals.length * 4} 筆存證紀錄` : "0 筆存證紀錄"}</p>
                     </div>
                   </div>
                 </div>
@@ -2793,27 +2961,110 @@ function DashboardPage({ onNewRequirement, regData, onViewProposals, onViewCompa
   );
 }
 
-function PortfolioPage({ onBack, acceptedProposal }: { onBack: () => void, acceptedProposal: Proposal | null }) {
-  const hasAcceptedProposal = !!acceptedProposal;
-  const portfolios: PortfolioProposal[] = acceptedProposal ? [
-    {
-      id: `PORT-${acceptedProposal.id}`,
-      brokerName: acceptedProposal.brokerName,
-      proposalName: acceptedProposal.proposalName,
-      version: "v1.0",
-      status: "executing",
-      signingTime: new Date().toLocaleDateString('zh-TW'),
-      cumulativeReturn: "+4.25%",
-      returnSummary: "NT$ 12,450",
-      latestNAV: "NT$ 104.25",
-      periodChange: "+0.15%",
-      performanceStatus: "up",
-      assetAllocationSummary: acceptedProposal.assetAllocation,
-      lastAction: "income",
-      lastTransactionTime: new Date().toLocaleDateString('zh-TW'),
-      lastUpdated: new Date().toLocaleString('zh-TW')
-    }
-  ] : [];
+function RequirementsListPage({ onBack, requirements, onViewProposals, onNewRequirement }: { onBack: () => void, requirements: Requirement[], onViewProposals: () => void, onNewRequirement: () => void }) {
+  return (
+    <div className="flex-1 bg-slate-50 pb-20">
+      <div className="bg-white border-b border-slate-200 pt-12 pb-8 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center gap-4 mb-6">
+            <button 
+              onClick={onBack}
+              className="p-2 hover:bg-slate-100 rounded-xl transition-all text-slate-500"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-3xl font-bold text-slate-900">所有投資需求</h1>
+          </div>
+          <p className="text-slate-500">查看您過去建立的所有投資配置需求及其媒合狀態。</p>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 mt-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-slate-900">需求列表 ({requirements.length})</h2>
+          <button 
+            onClick={onNewRequirement}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> 建立新需求
+          </button>
+        </div>
+
+        <div className="grid gap-4">
+          {requirements.length > 0 ? requirements.map((req) => (
+            <div key={req.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-200 transition-all group">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-xs font-mono font-bold text-slate-400">{req.id}</span>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                      req.status === "媒合中" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+                    }`}>
+                      {req.status}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors">{req.title}</h3>
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                    <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {req.date}</span>
+                    <span className="flex items-center gap-1"><BarChart3 className="w-4 h-4" /> {req.proposals} 個方案</span>
+                    <div className="flex gap-2">
+                      {req.tags.map((tag, idx) => (
+                        <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded-md">{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={onViewProposals}
+                    className="px-6 py-3 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                  >
+                    查看媒合方案
+                  </button>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <div className="bg-white p-20 rounded-3xl border border-dashed border-slate-200 text-center">
+              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <FilePlus className="text-slate-300 w-10 h-10" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">尚未建立任何需求</h3>
+              <p className="text-slate-500 mb-8 max-w-sm mx-auto">
+                建立您的第一個投資需求，讓頂尖券商為您量身打造專屬的配置方案。
+              </p>
+              <button 
+                onClick={onNewRequirement}
+                className="px-8 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 flex items-center gap-2 mx-auto"
+              >
+                <Plus className="w-5 h-5" /> 立即建立新需求
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PortfolioPage({ onBack, acceptedProposals }: { onBack: () => void, acceptedProposals: Proposal[] }) {
+  const portfolios: PortfolioProposal[] = acceptedProposals.map(proposal => ({
+    id: `PORT-${proposal.id}`,
+    brokerName: proposal.brokerName,
+    proposalName: proposal.proposalName,
+    version: "v1.0",
+    status: "executing",
+    signingTime: new Date().toLocaleDateString('zh-TW'),
+    cumulativeReturn: "+4.25%",
+    returnSummary: "NT$ 12,450",
+    latestNAV: "NT$ 104.25",
+    periodChange: "+0.15%",
+    performanceStatus: "up",
+    assetAllocationSummary: proposal.assetAllocation,
+    lastAction: "income",
+    lastTransactionTime: new Date().toLocaleDateString('zh-TW'),
+    lastUpdated: new Date().toLocaleString('zh-TW')
+  }));
 
   return (
     <div className="flex-1 bg-slate-50 pb-20">
@@ -2964,106 +3215,97 @@ function PortfolioPage({ onBack, acceptedProposal }: { onBack: () => void, accep
   );
 }
 
-function AuthorizationsPage({ onBack, acceptedProposal }: { onBack: () => void, acceptedProposal: Proposal | null }) {
-  const hasAcceptedProposal = !!acceptedProposal;
-  const authorizations: Authorization[] = acceptedProposal ? [
-    {
-      id: `AUTH-${acceptedProposal.id}`,
-      brokerName: acceptedProposal.brokerName,
-      scope: ["可查看需求", "可回傳方案", "可更新方案"],
-      startTime: new Date().toLocaleDateString('zh-TW'),
-      expiryTime: new Date(new Date().setMonth(new Date().getMonth() + 6)).toLocaleDateString('zh-TW'),
-      status: "valid"
-    }
-  ] : [];
+function AuthorizationsPage({ onBack, acceptedProposals }: { onBack: () => void, acceptedProposals: Proposal[] }) {
+  const hasAcceptedProposal = acceptedProposals.length > 0;
+  
+  const authorizations: Authorization[] = acceptedProposals.map(proposal => ({
+    id: `AUTH-${proposal.id}`,
+    brokerName: proposal.brokerName,
+    scope: ["可查看需求", "可回傳方案", "可更新方案"],
+    startTime: new Date().toLocaleDateString('zh-TW'),
+    expiryTime: new Date(new Date().setMonth(new Date().getMonth() + 6)).toLocaleDateString('zh-TW'),
+    status: "valid"
+  }));
 
-  const consentRecords: ConsentRecord[] = acceptedProposal ? [
+  const consentRecords: ConsentRecord[] = acceptedProposals.flatMap((proposal, idx) => [
     {
-      id: "REC-1001",
+      id: `REC-${1000 + idx * 10 + 1}`,
       eventType: "同意平台提供需求給券商",
       timestamp: "2024-03-27 10:30:15",
       hash: "0x7a2b...4c5d",
       verificationStatus: "已驗證"
     },
     {
-      id: "REC-1002",
-      eventType: `同意查看「${acceptedProposal.proposalName}」方案`,
+      id: `REC-${1000 + idx * 10 + 2}`,
+      eventType: `同意查看「${proposal.proposalName}」方案`,
       timestamp: "2024-03-28 14:20:00",
       hash: "0x1a2b...8f9a",
       verificationStatus: "已驗證"
     },
     {
-      id: "REC-1003",
+      id: `REC-${1000 + idx * 10 + 3}`,
       eventType: "確認風險揭露事項",
       timestamp: "2024-03-28 14:25:30",
       hash: "0x9a8b...1a0b",
       verificationStatus: "已驗證"
     },
     {
-      id: "REC-1004",
-      eventType: `接受${acceptedProposal.brokerName}方案`,
+      id: `REC-${1000 + idx * 10 + 4}`,
+      eventType: `接受${proposal.brokerName}方案`,
       timestamp: new Date().toLocaleString('zh-TW'),
       hash: "0x5a6b...3a4b",
       verificationStatus: "處理中"
     }
-  ] : [];
+  ]);
 
-  const proposalVersions: ProposalVersion[] = acceptedProposal ? [
-    {
-      id: `VER-${acceptedProposal.id}`,
-      proposalName: acceptedProposal.proposalName,
-      version: "v1",
-      updateTime: acceptedProposal.lastUpdated,
-      summary: "初始版本發布：包含您所選定的資產組合與風險揭露。",
-      brokerName: acceptedProposal.brokerName,
-      userStatus: "agreed"
-    }
-  ] : [];
+  const proposalVersions: ProposalVersion[] = acceptedProposals.map(proposal => ({
+    id: `VER-${proposal.id}`,
+    proposalName: proposal.proposalName,
+    version: "v1",
+    updateTime: proposal.lastUpdated,
+    summary: "初始版本發布：包含您所選定的資產組合與風險揭露。",
+    brokerName: proposal.brokerName,
+    userStatus: "agreed"
+  }));
 
-  const transactionRecords: TransactionRecord[] = acceptedProposal ? [
-    {
-      id: "TX-9901",
-      timestamp: new Date().toLocaleString('zh-TW'),
-      brokerName: acceptedProposal.brokerName,
-      proposalName: acceptedProposal.proposalName,
-      assetName: "初始配置資產組合",
-      assetType: "RWA 代幣化",
-      action: "buy",
-      quantity: "100 單位",
-      price: "NT$ 1,000",
-      amount: "NT$ 100,000",
-      holdingStatus: "持有中",
-      status: "completed",
-      hash: "0xabc1...def2"
-    }
-  ] : [];
+  const transactionRecords: TransactionRecord[] = acceptedProposals.map(proposal => ({
+    id: `TX-9901-${proposal.id}`,
+    timestamp: new Date().toLocaleString('zh-TW'),
+    brokerName: proposal.brokerName,
+    proposalName: proposal.proposalName,
+    assetName: "初始配置資產組合",
+    assetType: "RWA 代幣化",
+    action: "buy",
+    quantity: "100 單位",
+    price: "NT$ 1,000",
+    amount: "NT$ 100,000",
+    holdingStatus: "持有中",
+    status: "completed",
+    hash: "0xabc1...def2"
+  }));
 
   const incomeRecords: IncomeRecord[] = [];
 
-  const contractExecutions: ContractExecution[] = acceptedProposal ? [
-    {
-      id: "EXEC-001",
-      timestamp: new Date().toLocaleString('zh-TW'),
-      contractName: "投資方案執行合約",
-      event: "簽署接受",
-      status: "success",
-      hash: "0x5a6b...3a4b",
-      contractId: "0x92D...B56"
-    }
-  ] : [];
+  const contractExecutions: ContractExecution[] = acceptedProposals.map(proposal => ({
+    id: `EXEC-001-${proposal.id}`,
+    timestamp: new Date().toLocaleString('zh-TW'),
+    contractName: "投資方案執行合約",
+    event: "簽署接受",
+    status: "success",
+    hash: "0x5a6b...3a4b",
+    contractId: "0x92D...B56"
+  }));
 
-  const signingRecords: SigningRecord[] = acceptedProposal ? [
-    {
-      id: "SIG-001",
-      timestamp: new Date().toLocaleString('zh-TW'),
-      proposalName: acceptedProposal.proposalName,
-      version: "v1.0",
-      purpose: "方案接受確認",
-      credentialId: "DID:IWM:0x71C...A45",
-      signatureHash: "0x8f9a...1a2b3c4d",
-      status: "verified"
-    }
-  ] : [];
+  const signingRecords: SigningRecord[] = acceptedProposals.map(proposal => ({
+    id: `SIG-001-${proposal.id}`,
+    timestamp: new Date().toLocaleString('zh-TW'),
+    proposalName: proposal.proposalName,
+    version: "v1.0",
+    purpose: "方案接受確認",
+    credentialId: "DID:IWM:0x71C...A45",
+    signatureHash: "0x8f9a...1a2b3c4d",
+    status: "verified"
+  }));
 
   return (
     <div className="flex-1 bg-slate-50 pb-20">
@@ -3554,7 +3796,8 @@ function RegisterPage({
   setRegData,
   regStep,
   setRegStep,
-  onComplete
+  onComplete,
+  isRegistering
 }: {
   onBack: () => void;
   regData: RegistrationData;
@@ -3562,6 +3805,7 @@ function RegisterPage({
   regStep: number;
   setRegStep: Dispatch<SetStateAction<number>>;
   onComplete: () => void;
+  isRegistering: boolean;
 }) {
   const steps = [
     { id: 1, title: "註冊會員", icon: Users },
@@ -3603,6 +3847,33 @@ function RegisterPage({
       return { ...prev, credit: { ...prev.credit, [field]: list } };
     });
   };
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isEmailValid = emailRegex.test(regData.basic.email);
+  const isPasswordLongEnough = regData.basic.password.length >= 8;
+  const doPasswordsMatch = regData.basic.password === regData.basic.confirmPassword;
+
+  const step1Errors = {
+    name: !regData.basic.name ? "請輸入姓名" : "",
+    email: !regData.basic.email ? "請輸入電子郵件" : !isEmailValid ? "電子郵件格式不正確" : "",
+    password: !regData.basic.password ? "請輸入密碼" : !isPasswordLongEnough ? "密碼至少需要 8 位字元" : "",
+    confirmPassword: !regData.basic.confirmPassword ? "請再次輸入密碼" : !doPasswordsMatch ? "密碼不一致" : "",
+    terms: !regData.basic.agreedToTerms ? "請同意服務條款" : ""
+  };
+
+  const step2Errors = {
+    isNotRobot: !regData.audit.isNotRobot ? "請勾選我不是機器人" : "",
+    idName: !regData.audit.idName ? "請輸入證件姓名" : "",
+    birthday: !regData.audit.birthday ? "請選擇出生年月日" : ""
+  };
+
+  const step3Errors = {
+    declarations: (!regData.credit.declarationAgreed || !regData.credit.auditAgreed || !regData.credit.certificateAgreed) ? "請勾選所有聲明" : ""
+  };
+
+  const canGoToStep2 = regData.basic.name && isEmailValid && isPasswordLongEnough && doPasswordsMatch && regData.basic.agreedToTerms;
+  const canGoToStep3 = regData.audit.isNotRobot && regData.audit.idName && regData.audit.birthday;
+  const canComplete = regData.credit.declarationAgreed && regData.credit.auditAgreed && regData.credit.certificateAgreed;
 
   return (
     <div className="flex-1 bg-slate-50 py-12 px-6">
@@ -3657,12 +3928,12 @@ function RegisterPage({
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
-                <Input label="姓名" value={regData.basic.name} onChange={(v) => updateBasic("name", v)} placeholder="請輸入真實姓名" />
-                <Input label="電子郵件" value={regData.basic.email} onChange={(v) => updateBasic("email", v)} placeholder="example@mail.com" />
+                <Input label="姓名" value={regData.basic.name} onChange={(v) => updateBasic("name", v)} placeholder="請輸入真實姓名" error={regData.basic.name === "" ? "" : step1Errors.name} />
+                <Input label="電子郵件" value={regData.basic.email} onChange={(v) => updateBasic("email", v)} placeholder="example@mail.com" error={regData.basic.email === "" ? "" : step1Errors.email} />
                 <Input label="手機號碼" value={regData.basic.phone} onChange={(v) => updateBasic("phone", v)} placeholder="0912345678" />
                 <Input label="居住地區 / 國家" value={regData.basic.region} onChange={(v) => updateBasic("region", v)} placeholder="例如：台灣" />
-                <Input label="密碼" type="password" value={regData.basic.password} onChange={(v) => updateBasic("password", v)} placeholder="至少 8 位字元" />
-                <Input label="確認密碼" type="password" value={regData.basic.confirmPassword} onChange={(v) => updateBasic("confirmPassword", v)} placeholder="再次輸入密碼" />
+                <Input label="密碼" type="password" value={regData.basic.password} onChange={(v) => updateBasic("password", v)} placeholder="至少 8 位字元" error={regData.basic.password === "" ? "" : step1Errors.password} />
+                <Input label="確認密碼" type="password" value={regData.basic.confirmPassword} onChange={(v) => updateBasic("confirmPassword", v)} placeholder="再次輸入密碼" error={regData.basic.confirmPassword === "" ? "" : step1Errors.confirmPassword} />
               </div>
 
               <div className="space-y-4 pt-4">
@@ -3682,10 +3953,17 @@ function RegisterPage({
 
               <button 
                 onClick={() => setRegStep(2)}
-                disabled={!regData.basic.name || !regData.basic.email || !regData.basic.agreedToTerms}
-                className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all flex items-center justify-center gap-2"
+                disabled={!canGoToStep2}
+                className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all flex flex-col items-center justify-center gap-1 shadow-xl shadow-blue-100 disabled:shadow-none"
               >
-                下一步：身分審核 <ArrowRight className="w-5 h-5" />
+                <div className="flex items-center gap-2">
+                  下一步：身分審核 <ArrowRight className="w-5 h-5" />
+                </div>
+                {!canGoToStep2 && (
+                  <span className="text-[10px] opacity-80">
+                    {step1Errors.name || step1Errors.email || step1Errors.password || step1Errors.confirmPassword || step1Errors.terms}
+                  </span>
+                )}
               </button>
             </div>
           )}
@@ -3726,8 +4004,8 @@ function RegisterPage({
 
                 <h3 className="text-lg font-bold border-b border-slate-100 pb-2">身分驗證</h3>
                 <div className="grid md:grid-cols-2 gap-6">
-                  <Input label="身分證 / 護照姓名" value={regData.audit.idName} onChange={(v) => updateAudit("idName", v)} placeholder="請輸入證件姓名" />
-                  <Input label="出生年月日" type="date" value={regData.audit.birthday} onChange={(v) => updateAudit("birthday", v)} />
+                  <Input label="身分證 / 護照姓名" value={regData.audit.idName} onChange={(v) => updateAudit("idName", v)} placeholder="請輸入證件姓名" error={regData.audit.idName === "" ? "" : step2Errors.idName} />
+                  <Input label="出生年月日" type="date" value={regData.audit.birthday} onChange={(v) => updateAudit("birthday", v)} error={regData.audit.birthday === "" ? "" : step2Errors.birthday} />
                 </div>
                 
                 <div className="space-y-3">
@@ -3793,13 +4071,26 @@ function RegisterPage({
               </div>
 
               <div className="flex gap-4 pt-8">
-                <button onClick={() => setRegStep(1)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all">上一步</button>
+                <button 
+                  onClick={() => setRegStep(1)} 
+                  disabled={isRegistering}
+                  className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all disabled:opacity-50"
+                >
+                  上一步
+                </button>
                 <button 
                   onClick={() => setRegStep(3)} 
-                  disabled={!regData.audit.isNotRobot || !regData.audit.idName || !regData.audit.birthday}
-                  className="flex-[2] py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all flex items-center justify-center gap-2"
+                  disabled={!canGoToStep3}
+                  className="flex-[2] py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all flex flex-col items-center justify-center gap-1 shadow-xl shadow-blue-100 disabled:shadow-none"
                 >
-                  下一步：財務審核 <ArrowRight className="w-5 h-5" />
+                  <div className="flex items-center gap-2">
+                    下一步：財務審核 <ArrowRight className="w-5 h-5" />
+                  </div>
+                  {!canGoToStep3 && (
+                    <span className="text-[10px] opacity-80">
+                      {step2Errors.isNotRobot || step2Errors.idName || step2Errors.birthday}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -3862,13 +4153,35 @@ function RegisterPage({
               </div>
 
               <div className="flex gap-4 pt-8">
-                <button onClick={() => setRegStep(2)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all">上一步</button>
+                <button 
+                  onClick={() => setRegStep(2)} 
+                  disabled={isRegistering}
+                  className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all disabled:opacity-50"
+                >
+                  上一步
+                </button>
                 <button 
                   onClick={onComplete}
-                  disabled={!regData.credit.declarationAgreed || !regData.credit.auditAgreed || !regData.credit.certificateAgreed}
-                  className="flex-[2] py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                  disabled={isRegistering || !canComplete}
+                  className="flex-[2] py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-slate-200 transition-all flex flex-col items-center justify-center gap-1 shadow-xl shadow-blue-100 disabled:shadow-none"
                 >
-                  完成資料填寫並等待核發憑證 <CheckCircle2 className="w-5 h-5" />
+                  <div className="flex items-center gap-2">
+                    {isRegistering ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        資料提交中...
+                      </>
+                    ) : (
+                      <>
+                        完成資料填寫並等待核發憑證 <CheckCircle2 className="w-5 h-5" />
+                      </>
+                    )}
+                  </div>
+                  {!canComplete && !isRegistering && (
+                    <span className="text-[10px] opacity-80">
+                      {step3Errors.declarations}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -3879,7 +4192,7 @@ function RegisterPage({
   );
 }
 
-function Input({ label, type = "text", value, onChange, placeholder, className = "" }: { label: string, type?: string, value: string, onChange: (v: string) => void, placeholder?: string, className?: string }) {
+function Input({ label, type = "text", value, onChange, placeholder, className = "", error }: { label: string, type?: string, value: string, onChange: (v: string) => void, placeholder?: string, className?: string, error?: string }) {
   return (
     <div className={className}>
       <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>
@@ -3888,8 +4201,9 @@ function Input({ label, type = "text", value, onChange, placeholder, className =
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
+        className={`w-full px-4 py-3 rounded-xl border focus:ring-2 outline-none transition-all text-sm ${error ? "border-red-500 focus:ring-red-100" : "border-slate-200 focus:ring-blue-500"}`}
       />
+      {error && <p className="text-[10px] text-red-500 mt-1 font-bold">{error}</p>}
     </div>
   );
 }
@@ -3923,6 +4237,129 @@ function Checkbox({ id, label, checked, onChange }: { id: string, label: string,
       <label htmlFor={id} className="text-sm font-medium text-slate-700 cursor-pointer">
         {label}
       </label>
+    </div>
+  );
+}
+
+function CredentialViewPage({ onDashboard, regData }: { onDashboard: () => void, regData: RegistrationData }) {
+  return (
+    <div className="flex-1 bg-slate-50 py-12 px-6">
+      <div className="max-w-4xl mx-auto">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center text-center mb-12"
+        >
+          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6">
+            <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+          </div>
+          <h1 className="text-4xl font-bold text-slate-900 mb-4 tracking-tight">憑證核發成功</h1>
+          <p className="text-slate-500 text-lg max-w-lg">
+            您的 InvestMatch 投資信用憑證已正式核發，並已記錄於區塊鏈存證系統中。
+          </p>
+        </motion.div>
+
+        {/* The Certificate Card */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="relative mb-12 group"
+        >
+          <div className="absolute -inset-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-[3.5rem] blur-xl opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+          <div className="relative bg-white border border-slate-100 rounded-[3rem] overflow-hidden shadow-2xl">
+            <div className="bg-slate-900 p-10 md:p-16 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-600/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl"></div>
+              
+              <div className="flex justify-between items-start mb-16 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-900/50">
+                    <ShieldCheck className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <span className="font-bold tracking-widest text-xl block">INVESTMATCH</span>
+                    <span className="text-[10px] text-blue-400 font-bold uppercase tracking-[0.3em]">Protocol V1.0</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mb-1">Credential ID</div>
+                  <div className="text-sm font-mono font-bold text-blue-400">IM-CERT-2026-8829-X92</div>
+                </div>
+              </div>
+              
+              <div className="space-y-2 relative z-10">
+                <div className="text-xs text-slate-400 font-bold uppercase tracking-[0.4em] mb-2">Credential Holder</div>
+                <h2 className="text-5xl font-bold tracking-tight mb-2">投資信用憑證</h2>
+                <div className="flex items-center gap-3 text-slate-300">
+                  <User className="w-5 h-5" />
+                  <span className="text-xl font-medium">{regData.basic.name}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-10 md:p-16 bg-white relative">
+              <div className="grid md:grid-cols-3 gap-10">
+                <div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Status</div>
+                  <div className="flex items-center gap-2 text-emerald-600 font-bold">
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                    已核發 (Verified)
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Issue Date</div>
+                  <div className="text-slate-900 font-bold">2026 / 03 / 31</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Expiry Date</div>
+                  <div className="text-slate-900 font-bold">2027 / 03 / 31</div>
+                </div>
+              </div>
+              
+              <div className="mt-12 pt-10 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100">
+                    <Database className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Verification Hash</div>
+                    <div className="text-slate-500 font-mono text-[10px] break-all max-w-[200px]">
+                      0x7a2b...f9e1d2c3b4a596877a2b1c0d9e8f7a2b1c0d9e8f
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-right hidden md:block">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Digital Signature</div>
+                    <div className="text-slate-900 font-serif italic text-sm">InvestMatch Protocol Auth</div>
+                  </div>
+                  <div className="w-20 h-20 bg-slate-900 rounded-2xl flex items-center justify-center p-2 shadow-xl">
+                    <QrCode className="w-full h-full text-white" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="flex flex-col md:flex-row gap-4 justify-center"
+        >
+          <button 
+            onClick={onDashboard}
+            className="px-10 py-5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all flex items-center justify-center gap-3 text-lg group"
+          >
+            進入儀表板 <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+          </button>
+          <button className="px-10 py-5 bg-white text-slate-700 font-bold rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-center gap-3 text-lg">
+            <Download className="w-6 h-6" /> 下載憑證 PDF
+          </button>
+        </motion.div>
+      </div>
     </div>
   );
 }
@@ -3997,18 +4434,76 @@ function WaitingPage({
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="w-full max-w-sm"
+              className="w-full max-w-md"
             >
-              <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl mb-8">
+              <div className="relative mb-10 group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                <div className="relative bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-xl">
+                  <div className="bg-slate-900 p-8 text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+                    <div className="flex justify-between items-start mb-10">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+                          <ShieldCheck className="w-6 h-6 text-white" />
+                        </div>
+                        <span className="font-bold tracking-wider text-sm">INVESTMATCH</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-slate-400 font-mono uppercase tracking-widest mb-1">Credential ID</div>
+                        <div className="text-xs font-mono font-bold text-blue-400">IM-CERT-2026-8829</div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Credential Holder</div>
+                      <div className="text-2xl font-bold tracking-tight">投資信用憑證</div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-8 bg-white space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Status</div>
+                        <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm">
+                          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                          已核發 (Verified)
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Issue Date</div>
+                        <div className="text-slate-900 font-bold text-sm">2026 / 03 / 31</div>
+                      </div>
+                    </div>
+                    
+                    <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100">
+                          <Database className="w-6 h-6 text-slate-400" />
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Issuer</div>
+                          <div className="text-slate-900 font-bold text-xs tracking-tight">InvestMatch Protocol V1</div>
+                        </div>
+                      </div>
+                      <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center">
+                        <QrCode className="w-7 h-7 text-white" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl mb-8 text-center">
                 <p className="text-emerald-700 font-bold">
-                  恭喜！平台已確認您的信用憑證核發成功。
+                  恭喜！您的投資信用憑證已成功核發。
                 </p>
               </div>
+              
               <button 
                 onClick={onComplete}
-                className="w-full py-5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all flex items-center justify-center gap-3 text-lg"
+                className="w-full py-5 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all flex items-center justify-center gap-3 text-lg group"
               >
-                開始填寫投資需求 <ArrowRight className="w-6 h-6" />
+                查看我的投資信用憑證 <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
               </button>
             </motion.div>
           )}
